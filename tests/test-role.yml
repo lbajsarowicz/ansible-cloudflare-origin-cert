@@ -11,11 +11,12 @@
     cf_certificate_hostnames: "{{ lookup('env', 'CF_CERTIFICATE_HOSTNAMES_VAR') | default('', true) }}"
 
     # Role variables configured for testing
+    # Using a unique path in /tmp for each run to avoid conflicts
     cf_certificate_install_path: >-
       /tmp/cf_certs_test_{{ lookup('env', 'GITHUB_RUN_ID') }}_{{ lookup('env', 'GITHUB_RUN_ATTEMPT') }}/
     cf_certificate_file: "{{ cf_certificate_install_path }}origin.pem"
     cf_key_file: "{{ cf_certificate_install_path }}origin.key"
-    cf_certificate_validity_days: 7
+    cf_certificate_validity_days: 7 # Use shortest validity for testing purposes
 
   pre_tasks:
     - name: Ensure certificate installation directory exists
@@ -23,13 +24,7 @@
         path: "{{ cf_certificate_install_path }}"
         state: directory
         mode: '0755'
-      tags: always
+      tags: always # Run this even in --check mode if applicable for other tests
 
   roles:
     - role: cloudflare_origin_cert
-
-  handlers:
-    - name: Restart webserver (CI Test Handler)
-      ansible.builtin.debug:
-        msg: "HANDLER: 'Restart webserver' for service '{{ webserver_service_name }}' was triggered."
-      listen: Restart webserver

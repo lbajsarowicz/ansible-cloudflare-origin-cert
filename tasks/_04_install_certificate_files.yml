@@ -12,7 +12,6 @@
     content: "{{ origin_certificate_content }}" # From _03_generate_new_cert_api.yml
     dest: "{{ cf_certificate_file }}"
     mode: '0644'
-  notify: Restart webserver
   when:
     - generate_new_certificate
     - origin_certificate_content is defined and origin_certificate_content | length > 0
@@ -51,8 +50,7 @@
     - generate_new_certificate
     - new_private_key_stat.stat.exists # Only if the new key file was actually created
     - origin_certificate_content is defined and origin_certificate_content | length > 0 # Only if cert was obtained
-  changed_when: true # Assume move always changes state for notification, or check more robustly
-  notify: Restart webserver
+  changed_when: true
 
 - name: Set correct permissions for the new private key
   ansible.builtin.file:
