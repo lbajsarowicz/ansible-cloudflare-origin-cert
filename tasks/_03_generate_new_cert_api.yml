@@ -59,12 +59,6 @@
 
   when: generate_new_certificate and newline_escaped_csr is defined
 
-- name: Display certificate request body with CSR for debugging
-  ansible.builtin.debug:
-    var: cert_request_body_with_csr
-  tags: [debug_csr_body] # Tag to easily enable/disable this debug task
-  when: generate_new_certificate and cert_request_body_with_csr is defined
-
 - name: Request new Origin Certificate from Cloudflare using CSR
   ansible.builtin.uri:
     url: "https://api.cloudflare.com/client/v4/certificates"

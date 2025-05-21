@@ -18,12 +18,6 @@
     cf_certificate_validity_days: 7
 
   pre_tasks:
-    - name: "DEBUG: Initial value of cf_certificate_hostnames from environment"
-      ansible.builtin.debug:
-        msg: "Raw cf_certificate_hostnames from env is '{{ cf_certificate_hostnames }}'
-        (Type: {{ cf_certificate_hostnames | type_debug }})"
-      tags: [debug_ci]
-
     - name: Ensure certificate installation directory exists
       ansible.builtin.file:
         path: "{{ cf_certificate_install_path }}"
