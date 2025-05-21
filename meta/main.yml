@@ -1,5 +1,7 @@
+---
 galaxy_info:
-  author: LBajsarowicz
+  role_name: cloudflare_origin_cert
+  author: lbajsarowicz
   description: Manages Cloudflare Origin SSL certificates - verifies, generates if needed/expiring, and installs them.
   company: "lbajsarowicz.me"
   license: MIT

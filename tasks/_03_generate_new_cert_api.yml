@@ -1,5 +1,71 @@
 ---
-- name: Generate new Cloudflare Origin Certificate via API
+- name: Ensure OpenSSL client is available
+  ansible.builtin.package:
+    name: openssl
+    state: present
+  become: true
+  when: generate_new_certificate
+
+- name: Define temporary paths for new key and CSR
+  ansible.builtin.set_fact:
+    _temp_private_key_path: "{{ cf_key_file }}.new.pem"
+    _temp_csr_path: "/tmp/origin_cert_{{ _hostname_slug_for_csr }}.csr"
+  vars:
+    _hostname_slug_for_csr: "{{ cf_certificate_hostnames[0] | regex_replace('[^a-zA-Z0-9.-]', '_') }}"
+  when: generate_new_certificate
+- name: Generate a new private key for the Origin Certificate
+  community.crypto.openssl_privatekey:
+    path: "{{ _temp_private_key_path }}"
+    size: 2048
+    mode: '0600'
+  register: private_key_generation_result
+  when: generate_new_certificate
+
+- name: Generate CSR using the new private key
+  community.crypto.openssl_csr:
+    path: "{{ _temp_csr_path }}"
+    privatekey_path: "{{ _temp_private_key_path }}"
+    common_name: "{{ cf_certificate_hostnames[0] }}"
+    subject_alt_name: "{{ cf_certificate_hostnames | map('regex_replace', '^(.*)$', 'DNS:\\1') | list }}"
+  register: csr_generation_result
+  when:
+    - generate_new_certificate
+    - private_key_generation_result is defined
+    - private_key_generation_result.filename is defined
+    - private_key_generation_result.changed | default(false)
+
+- name: Read CSR content from file
+  ansible.builtin.slurp:
+    src: "{{ _temp_csr_path }}"
+  register: csr_file_content
+  when:
+    - generate_new_certificate
+    - csr_generation_result is defined
+    - csr_generation_result.filename is defined
+    - csr_generation_result.changed | default(false)
+
+- name: Prepare newline-escaped CSR string for JSON payload
+  ansible.builtin.set_fact:
+    newline_escaped_csr: "{{ csr_file_content.content | b64decode }}"
+  when: generate_new_certificate and csr_file_content.content is defined
+
+- name: Prepare certificate request body with CSR
+  ansible.builtin.set_fact:
+    cert_request_body_with_csr:
+      hostnames: "{{ cf_certificate_hostnames }}"
+      request_type: "origin-rsa"
+      requested_validity: "{{ cf_certificate_validity_days }}"
+      csr: "{{ newline_escaped_csr }}"
+
+  when: generate_new_certificate and newline_escaped_csr is defined
+
+- name: Display certificate request body with CSR for debugging
+  ansible.builtin.debug:
+    var: cert_request_body_with_csr
+  tags: [debug_csr_body] # Tag to easily enable/disable this debug task
+  when: generate_new_certificate and cert_request_body_with_csr is defined
+
+- name: Request new Origin Certificate from Cloudflare using CSR
   ansible.builtin.uri:
     url: "https://api.cloudflare.com/client/v4/certificates"
     method: POST
@@ -7,35 +73,27 @@
       Authorization: "Bearer {{ cf_api_token }}"
       Content-Type: "application/json"
     body_format: json
-    body:
-      hostnames: "{{ cf_certificate_hostnames }}"
-      requested_validity: "{{ cf_certificate_validity_days }}"
-      request_type: "origin-rsa" # or "origin-ecc"
-    return_content: yes
-    status_code: [200, 201] # Expect success (200 or 201 for created)
-    validate_certs: yes
+    body: "{{ cert_request_body_with_csr }}"
+    return_content: true
+    status_code: [200, 201]
   register: new_cert_response
+  vars:
+    # If 'success' key is missing in JSON, default it to true (don't fail for missing key here).
+    # The actual check for success is based on status_code and this flag.
+    _task_api_success_flag: >-
+      {{ new_cert_response.json.get('success', true)
+         if new_cert_response.json is defined else true }}
   failed_when: >
     new_cert_response.status not in [200, 201] or
-    not new_cert_response.json.success | default(false)
+    not _task_api_success_flag
+  when: generate_new_certificate and cert_request_body_with_csr is defined
 
-- name: Extract certificate data from API response after successful generation
+- name: Extract certificate data from API response after CSR submission
   ansible.builtin.set_fact:
     origin_certificate_content: "{{ new_cert_response.json.result.certificate }}"
-    origin_private_key_content: "{{ new_cert_response.json.result.private_key }}"
   when:
-    - new_cert_response.status in [200, 201]
+    - generate_new_certificate
     - new_cert_response.json is defined
-    - new_cert_response.json.success | default(false)
+    - new_cert_response.json.get('success', false)
+    - new_cert_response.json.result is defined
     - new_cert_response.json.result.certificate is defined
-    - new_cert_response.json.result.private_key is defined
-
-- name: Fail if certificate generation API call succeeded but content is missing
-  ansible.builtin.fail:
-    msg: "Cloudflare API reported success but certificate or private key content is missing in the response."
-  when:
-    - new_cert_response.status in [200, 201]
-    - new_cert_response.json is defined
-    - new_cert_response.json.success | default(false)
-    - (origin_certificate_content is not defined or origin_certificate_content | length == 0 or
-      origin_private_key_content is not defined or origin_private_key_content | length == 0)

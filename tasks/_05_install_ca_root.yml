@@ -1,10 +1,7 @@
 ---
-# This task assumes you are using RSA certificates. If ECC, adjust the URL.
-# You might also want to make the root CA type (RSA/ECC) a variable.
 - name: Download and install Cloudflare Origin CA RSA root certificate
   ansible.builtin.get_url:
-    url: "https://developers.cloudflare.com/static/ssl/origin_ca_rsa_root.pem"
+    url: "https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem"
     dest: "{{ cf_certificate_install_path }}cloudflare_origin_rsa_root.pem"
     mode: '0644'
-    force: no # Avoid re-downloading if it already exists and is correct
-  # Consider adding checksum validation if desired.
+    force: false

@@ -1,35 +1,39 @@
 ---
-- hosts: localhost
+- name: Test role for certificate management
+  hosts: localhost
   connection: local
-  become: no
+  become: false
 
   vars:
     cf_api_token: "{{ lookup('env', 'CF_API_TOKEN_SECRET') }}"
     cf_zone_id: "{{ lookup('env', 'CF_ZONE_ID_SECRET') }}"
 
-    # cf_certificate_hostnames_test_var is a JSON string from GitHub repo variables
-    # e.g., '["ci-test1.yourdomain.com", "*.ci-test1.yourdomain.com"]'
-    _cf_certificate_hostnames_test_str: "{{ lookup('env', 'CF_CERTIFICATE_HOSTNAMES_VAR') }}"
-    cf_certificate_hostnames: "{{ _cf_certificate_hostnames_test_str | from_json if _cf_certificate_hostnames_test_str else ['default-ci-test.example.com'] }}"
+    cf_certificate_hostnames: "{{ lookup('env', 'CF_CERTIFICATE_HOSTNAMES_VAR') | default('', true) }}"
 
     # Role variables configured for testing
-    # Using a unique path in /tmp for each run to avoid conflicts
-    cf_certificate_install_path: "/tmp/cf_certs_test_{{ lookup('env', 'GITHUB_RUN_ID') }}_{{ lookup('env', 'GITHUB_RUN_ATTEMPT') }}/"
+    cf_certificate_install_path: >-
+      /tmp/cf_certs_test_{{ lookup('env', 'GITHUB_RUN_ID') }}_{{ lookup('env', 'GITHUB_RUN_ATTEMPT') }}/
     cf_certificate_file: "{{ cf_certificate_install_path }}origin.pem"
     cf_key_file: "{{ cf_certificate_install_path }}origin.key"
-    cf_certificate_validity_days: 7 # Use shortest validity for testing purposes
-    webserver_service_name: "dummy-ci-webserver" # Dummy service for handler
+    cf_certificate_validity_days: 7
+    webserver_service_name: "dummy-ci-webserver"
 
   pre_tasks:
+    - name: "DEBUG: Initial value of cf_certificate_hostnames from environment"
+      ansible.builtin.debug:
+        msg: "Raw cf_certificate_hostnames from env is '{{ cf_certificate_hostnames }}'
+        (Type: {{ cf_certificate_hostnames | type_debug }})"
+      tags: [debug_ci]
+
     - name: Ensure certificate installation directory exists
       ansible.builtin.file:
         path: "{{ cf_certificate_install_path }}"
         state: directory
         mode: '0755'
-      tags: always # Run this even in --check mode if applicable for other tests
+      tags: always
 
   roles:
-    - role: ../
+    - role: cloudflare_origin_cert
 
   handlers:
     - name: Restart webserver (CI Test Handler)

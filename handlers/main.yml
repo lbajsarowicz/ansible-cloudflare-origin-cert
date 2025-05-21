@@ -1,3 +1,4 @@
+---
 - name: Restart webserver
   ansible.builtin.service:
     name: "{{ webserver_service_name | default('nginx') }}" # Make webserver_service_name a variable

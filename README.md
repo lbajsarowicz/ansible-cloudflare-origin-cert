@@ -124,7 +124,7 @@ Here's a basic example of how to use this role in your playbook:
     webserver_service_name: "nginx" # or "apache2", etc.
 
   roles:
-    - role: lbajsarowicz.cloudflare_origin_certs
+    - role: lbajsarowicz.cloudflare_origin_cert
 
   handlers:
     - name: Restart webserver

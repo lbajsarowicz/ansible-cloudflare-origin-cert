@@ -1,14 +1,35 @@
 ---
+- name: Normalize cf_certificate_hostnames to ensure it is a list
+  ansible.builtin.set_fact:
+    # This redefines cf_certificate_hostnames, normalizing it.
+    # The entire Jinja logic is within a single {{ ... }} block
+    cf_certificate_hostnames: >-
+      {{
+        ( _input_hostnames | from_json )
+        if ( _input_hostnames is string and _input_hostnames | trim != "" )
+        else ( _input_hostnames )
+        if ( _input_hostnames is sequence and not _input_hostnames is string and _input_hostnames | length > 0 )
+        else []
+      }}
+  vars:
+    # _input_hostnames is defined here locally for the set_fact task
+    _input_hostnames: "{{ cf_certificate_hostnames | default('', true) }}"
+  tags: always
+
 - name: Assert that all required variables are defined
   ansible.builtin.assert:
     that:
-      - cf_api_token is defined and cf_api_token | length > 0
-      - cf_zone_id is defined and cf_zone_id | length > 0
-      - cf_certificate_hostnames is defined and cf_certificate_hostnames | length > 0
-      - cf_certificate_install_path is defined and cf_certificate_install_path | length > 0
-      - cf_certificate_file is defined and cf_certificate_file | length > 0
-      - cf_key_file is defined and cf_key_file | length > 0
+      - cf_api_token is defined and cf_api_token | string | trim != ""
+      - cf_zone_id is defined and cf_zone_id | string | trim != ""
+      - cf_certificate_hostnames is defined
+      - cf_certificate_hostnames is sequence
+      - not cf_certificate_hostnames is string
+      - cf_certificate_hostnames | length > 0
+      - cf_certificate_install_path is defined and cf_certificate_install_path | string | trim != ""
+      - cf_certificate_file is defined and cf_certificate_file | string | trim != ""
+      - cf_key_file is defined and cf_key_file | string | trim != ""
       - cf_certificate_validity_days is defined
+      - cf_certificate_validity_days is number
     quiet: true # Suppress "ok" output for assertions
     fail_msg: "A required variable is not defined or is empty. Please check role documentation."
     success_msg: "All required variables are defined."
@@ -19,17 +40,16 @@
 
 - name: Initialize certificate status facts
   ansible.builtin.set_fact:
-    # Default to: certificate not found, therefore needs generating/renewing.
-    # This will be updated in _02_evaluate_existing_certs.yml if a suitable, non-expiring cert is found.
     certificate_status:
       found: false
       needs_renewal: true
-    generate_new_certificate: true # Initial assumption, will be refined
-    # Ensure content variables are undefined initially
+    generate_new_certificate: true
     origin_certificate_content: null
     origin_private_key_content: null
+  tags: always
 
 - name: Calculate renewal threshold (1 year from current UTC time)
   ansible.builtin.set_fact:
     renewal_threshold_epoch: "{{ ansible_date_time.epoch | int + (365 * 24 * 60 * 60) }}"
   when: ansible_date_time.epoch is defined and ansible_date_time.epoch is not none
+  tags: always

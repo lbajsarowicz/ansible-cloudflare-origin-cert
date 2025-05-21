@@ -1,22 +1,71 @@
 ---
 - name: Ensure installation directory exists for SSL certificate
   ansible.builtin.file:
-    path: "{{ cf_certificate_install_path }}"
+    path: "{{ cf_certificate_install_path }}" # Role variable
     state: directory
     mode: '0755'
+  when: generate_new_certificate # From _02_evaluate_existing_certs.yml
+  tags: always
 
-- name: Install new Origin Certificate file
+- name: Install new Origin Certificate file (obtained from Cloudflare)
   ansible.builtin.copy:
-    content: "{{ origin_certificate_content }}"
+    content: "{{ origin_certificate_content }}" # From _03_generate_new_cert_api.yml
     dest: "{{ cf_certificate_file }}"
     mode: '0644'
-  notify: Restart webserver # Assuming you have a handler named 'Restart webserver'
-  when: origin_certificate_content is defined and origin_certificate_content | length > 0
-
-- name: Install new Origin Private Key file
-  ansible.builtin.copy:
-    content: "{{ origin_private_key_content }}"
-    dest: "{{ cf_key_file }}"
-    mode: '0600' # Secure permissions for the private key
   notify: Restart webserver
-  when: origin_private_key_content is defined and origin_private_key_content | length > 0
+  when:
+    - generate_new_certificate
+    - origin_certificate_content is defined and origin_certificate_content | length > 0
+
+- name: Define path for the newly generated private key
+  ansible.builtin.set_fact:
+    _final_new_private_key_path_temp: "{{ cf_key_file }}.new.pem"
+  when: generate_new_certificate
+
+- name: Check if new private key was generated
+  ansible.builtin.stat:
+    path: "{{ _final_new_private_key_path_temp }}"
+  register: new_private_key_stat
+  when: generate_new_certificate
+
+- name: Install new Origin Private Key (locally generated)
+  ansible.builtin.command: # Using command to move, as copy from remote src to remote dest is more complex
+    cmd: "mv --backup=simple {{ _final_new_private_key_path_temp }} {{ cf_key_file }}"
+    creates: "{{ cf_key_file }}" # Makes it idempotent if cf_key_file already exists from this exact key
+  # Alternatively, use ansible.builtin.copy with remote_src: true if you prefer,
+  # but move is more direct for a temporary file.
+  # Or fetch and copy if key was on controller (not the case here).
+  # Using slurp and copy content is also an option but more steps.
+  # ansible.builtin.move module is also available since Ansible 2.7
+  # Let's use ansible.builtin.move for cleaner semantics if available, or command as fallback.
+  # For broader compatibility and simplicity with `creates`:
+  # ansible.builtin.move:
+  #   src: "{{ _final_new_private_key_path_temp }}"
+  #   dest: "{{ cf_key_file }}"
+  #   remote_src: true # Important!
+  #   mode: '0600'
+  # This is cleaner if ansible.builtin.move is appropriate.
+  # Let's stick to command for now as it was what I initially thought for mv with creates.
+  # Or, more Ansible-idiomatic with move:
+  when:
+    - generate_new_certificate
+    - new_private_key_stat.stat.exists # Only if the new key file was actually created
+    - origin_certificate_content is defined and origin_certificate_content | length > 0 # Only if cert was obtained
+  changed_when: true # Assume move always changes state for notification, or check more robustly
+  notify: Restart webserver
+
+- name: Set correct permissions for the new private key
+  ansible.builtin.file:
+    path: "{{ cf_key_file }}"
+    mode: '0600'
+  when:
+    - generate_new_certificate
+    - new_private_key_stat.stat.exists # Ensure the file we are chmod'ing exists
+    - origin_certificate_content is defined and origin_certificate_content | length > 0
+
+# Optional: Cleanup temporary CSR file if it's still around and you want to be tidy
+- name: Clean up temporary CSR file
+  ansible.builtin.file:
+    path: "/tmp/origin_cert_{{ cf_certificate_hostnames[0] | regex_replace('[^a-zA-Z0-9.-]', '_') }}.csr"
+    state: absent
+  when: generate_new_certificate
