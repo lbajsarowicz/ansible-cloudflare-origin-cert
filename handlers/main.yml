@@ -1,6 +1,10 @@
 ---
 - name: Restart webserver
   ansible.builtin.service:
-    name: "{{ webserver_service_name | default('nginx') }}" # Make webserver_service_name a variable
+    name: "{{ webserver_service_name }}"
     state: restarted
+  when: >
+    webserver_service_name is defined and
+    webserver_service_name is not none and
+    webserver_service_name | string | trim != ""
   listen: Restart webserver
