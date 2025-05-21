@@ -16,7 +16,6 @@
     cf_certificate_file: "{{ cf_certificate_install_path }}origin.pem"
     cf_key_file: "{{ cf_certificate_install_path }}origin.key"
     cf_certificate_validity_days: 7
-    webserver_service_name: "dummy-ci-webserver"
 
   pre_tasks:
     - name: "DEBUG: Initial value of cf_certificate_hostnames from environment"
