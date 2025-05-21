@@ -1,0 +1,31 @@
+---
+- name: Query Cloudflare API for existing Origin Certificates
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/origin_tls_client_auth"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cf_api_token }}"
+      Content-Type: "application/json"
+    return_content: yes
+    status_code: [200] # Expect success
+    validate_certs: yes # Recommended for production
+  register: existing_certs_response
+  failed_when: >
+    existing_certs_response.status != 200 or
+    not existing_certs_response.json.success | default(true) # Some Cloudflare errors have 200 but success:false
+  # More nuanced error handling could be added here if needed
+  # For example, retries on transient network errors.
+  ignore_errors: true # We will handle the failure in the next step based on registration
+
+- name: Handle API call failure for listing certificates
+  ansible.builtin.set_fact:
+    api_call_failed: true
+  when: existing_certs_response is not defined or existing_certs_response.failed or not existing_certs_response.json.success | default(true)
+
+- name: Inform about API call failure if it occurred
+  ansible.builtin.fail:
+    msg: >
+      Failed to retrieve existing certificates from Cloudflare.
+      Status: {{ existing_certs_response.status | default('N/A') }}
+      Response: {{ existing_certs_response.content | default(existing_certs_response.msg) | default('N/A') }}
+  when: api_call_failed | default(false)

@@ -1,0 +1,9 @@
+---
+cf_api_token: ""
+cf_zone_id: ""
+cf_certificate_hostnames: []
+cf_certificate_install_path: "/etc/ssl/cloudflare/"
+cf_certificate_file: "{{ cf_certificate_install_path }}origin.pem"
+cf_key_file: "{{ cf_certificate_install_path }}origin.key"
+# How long the certificate should be valid for (e.g., 7, 30, 90, 365, 730, 1095, 5475 days)
+cf_certificate_validity_days: 5475

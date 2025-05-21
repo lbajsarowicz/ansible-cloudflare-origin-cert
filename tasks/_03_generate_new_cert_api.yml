@@ -1,0 +1,41 @@
+---
+- name: Generate new Cloudflare Origin Certificate via API
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/certificates"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ cf_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      hostnames: "{{ cf_certificate_hostnames }}"
+      requested_validity: "{{ cf_certificate_validity_days }}"
+      request_type: "origin-rsa" # or "origin-ecc"
+    return_content: yes
+    status_code: [200, 201] # Expect success (200 or 201 for created)
+    validate_certs: yes
+  register: new_cert_response
+  failed_when: >
+    new_cert_response.status not in [200, 201] or
+    not new_cert_response.json.success | default(false)
+
+- name: Extract certificate data from API response after successful generation
+  ansible.builtin.set_fact:
+    origin_certificate_content: "{{ new_cert_response.json.result.certificate }}"
+    origin_private_key_content: "{{ new_cert_response.json.result.private_key }}"
+  when:
+    - new_cert_response.status in [200, 201]
+    - new_cert_response.json is defined
+    - new_cert_response.json.success | default(false)
+    - new_cert_response.json.result.certificate is defined
+    - new_cert_response.json.result.private_key is defined
+
+- name: Fail if certificate generation API call succeeded but content is missing
+  ansible.builtin.fail:
+    msg: "Cloudflare API reported success but certificate or private key content is missing in the response."
+  when:
+    - new_cert_response.status in [200, 201]
+    - new_cert_response.json is defined
+    - new_cert_response.json.success | default(false)
+    - (origin_certificate_content is not defined or origin_certificate_content | length == 0 or
+      origin_private_key_content is not defined or origin_private_key_content | length == 0)

@@ -1,0 +1,33 @@
+galaxy_info:
+  author: LBajsarowicz
+  description: Manages Cloudflare Origin SSL certificates - verifies, generates if needed/expiring, and installs them.
+  company: "lbajsarowicz.me"
+  license: MIT
+
+  min_ansible_version: '2.9'
+
+  platforms:
+    - name: EL
+      versions:
+        - '8'
+        - '9'
+    - name: Ubuntu
+      versions:
+        - focal # 20.04
+        - jammy # 22.04
+    - name: Debian
+      versions:
+        - buster # 10
+        - bullseye # 11
+
+  galaxy_tags:
+    - cloudflare
+    - ssl
+    - tls
+    - certificate
+    - origin
+    - security
+    - web
+    - automation
+
+dependencies: []

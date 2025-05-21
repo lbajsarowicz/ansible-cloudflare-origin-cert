@@ -1,0 +1,22 @@
+---
+- name: Ensure installation directory exists for SSL certificate
+  ansible.builtin.file:
+    path: "{{ cf_certificate_install_path }}"
+    state: directory
+    mode: '0755'
+
+- name: Install new Origin Certificate file
+  ansible.builtin.copy:
+    content: "{{ origin_certificate_content }}"
+    dest: "{{ cf_certificate_file }}"
+    mode: '0644'
+  notify: Restart webserver # Assuming you have a handler named 'Restart webserver'
+  when: origin_certificate_content is defined and origin_certificate_content | length > 0
+
+- name: Install new Origin Private Key file
+  ansible.builtin.copy:
+    content: "{{ origin_private_key_content }}"
+    dest: "{{ cf_key_file }}"
+    mode: '0600' # Secure permissions for the private key
+  notify: Restart webserver
+  when: origin_private_key_content is defined and origin_private_key_content | length > 0

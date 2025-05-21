@@ -1,0 +1,49 @@
+---
+- name: Evaluate existing certificates for suitability and expiration
+  ansible.builtin.set_fact:
+    certificate_status: >-
+      {% set found_cert_info = namespace(found=false, needs_renewal=true) -%}
+      {% for cert in existing_certs_response.json.result -%}
+        {# Ensure hostnames lists are comparable; sort them for robust comparison #}
+        {% if (certificate_hostnames | map('lower') | sort) == (cert.hostnames | map('lower') | sort)
+              and (cert.state | default('') | lower == 'active' or cert.status | default('') | lower == 'active') -%}
+          {% set found_cert_info.found = true -%}
+          {# Parse Cloudflare's UTC timestamp ('Z' denotes Zulu/UTC) #}
+          {% set cert_expires_epoch = (cert.expires_on | to_datetime('%Y-%m-%dT%H:%M:%SZ')).strftime('%s') | int -%}
+          {% if cert_expires_epoch >= renewal_threshold_epoch | int -%}
+            {% set found_cert_info.needs_renewal = false -%}
+            {# Found a good cert that does not need renewal, no need to check further #}
+            {% break -%}
+          {% else -%}
+            {# Found an active cert, but it needs renewal. Set and break. #}
+            {% set found_cert_info.needs_renewal = true -%}
+            {% break -%}
+          {% endif -%}
+        {% endif -%}
+      {% endfor -%}
+      {{ {'found': found_cert_info.found,
+          'needs_renewal': found_cert_info.needs_renewal if found_cert_info.found else true} }}
+  when:
+    - not (api_call_failed | default(false)) # Only run if API call was successful
+    - existing_certs_response.json is defined
+    - existing_certs_response.json.result is defined
+    - existing_certs_response.json.result | length > 0
+    - renewal_threshold_epoch is defined
+
+- name: Determine if new certificate generation is actually required
+  ansible.builtin.set_fact:
+    # If api_call_failed, certificate_status remains default {found:false, needs_renewal:true}
+    # which means generate_new_certificate will be true.
+    # This is usually desired: if we can't check, assume we need one.
+    # However, the API call failure now explicitly fails the role in _01.
+    # So, if we reach here, api_call_failed is false.
+    generate_new_certificate: "{{ not certificate_status.found or certificate_status.needs_renewal }}"
+
+- name: Inform about certificate status and decision
+  ansible.builtin.debug:
+    msg: >-
+      Evaluation for hostnames {{ certificate_hostnames }}:
+      Found on Cloudflare: {{ certificate_status.found }}.
+      Needs Renewal (or creation if not found): {{ certificate_status.needs_renewal }}.
+      Decision - Proceeding with new certificate generation: {{ generate_new_certificate }}.
+  verbosity: 1 # Show only with -v

@@ -1,0 +1,31 @@
+---
+- name: 00 - Initialize Role and Validate Inputs
+  ansible.builtin.include_tasks: _00_initialize_and_validate.yml
+  tags: always # Ensure this always runs
+
+- name: 01 - Check Cloudflare for Existing Origin Certificates via API
+  ansible.builtin.include_tasks: _01_check_existing_certs_api.yml
+  tags: [cloudflare_api, certificate_check]
+
+- name: 02 - Evaluate Existing Certificates and Determine Renewal Need
+  ansible.builtin.include_tasks: _02_evaluate_existing_certs.yml
+  # This task file internally handles conditions based on existing_certs_response
+  tags: [certificate_check, certificate_evaluation]
+
+- name: 03 - Generate New Origin Certificate via Cloudflare API (if needed)
+  ansible.builtin.include_tasks: _03_generate_new_cert_api.yml
+  when: generate_new_certificate | default(false)
+  tags: [cloudflare_api, certificate_generation]
+
+- name: 04 - Install Certificate and Key Files (if new cert generated)
+  ansible.builtin.include_tasks: _04_install_certificate_files.yml
+  when:
+    - generate_new_certificate | default(false)
+    - origin_certificate_content is defined and origin_certificate_content | length > 0
+    - origin_private_key_content is defined and origin_private_key_content | length > 0
+  tags: [certificate_installation]
+
+- name: 05 - Install Cloudflare Origin CA Root Certificate (if new cert generated)
+  ansible.builtin.include_tasks: _05_install_ca_root.yml
+  when: generate_new_certificate | default(false) # Or make it always run to ensure root CA is present
+  tags: [certificate_installation, ca_root]
